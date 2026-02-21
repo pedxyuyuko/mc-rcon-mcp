@@ -17,15 +17,32 @@ if (!MC_RCON_PASSWORD) {
 }
 
 const rcon = new RconClient(MC_RCON_HOST, MC_RCON_PORT, MC_RCON_PASSWORD);
+let connectionError: string | null = null;
 
-async function connectRcon() {
+async function ensureConnected(): Promise<void> {
+  if (rcon.isConnected()) {
+    connectionError = null;
+    return;
+  }
+
   try {
     await rcon.connect();
+    connectionError = null;
     console.error(`Connected to RCON server at ${MC_RCON_HOST}:${MC_RCON_PORT}`);
   } catch (err) {
-    console.error(`Failed to connect to RCON server: ${err}`);
-    process.exit(1);
+    connectionError = err instanceof Error ? err.message : String(err);
+    throw new Error(`RCON connection failed: ${connectionError}`);
   }
+}
+
+async function checkConnection(): Promise<string> {
+  if (rcon.isConnected()) {
+    return `Connected to ${MC_RCON_HOST}:${MC_RCON_PORT}`;
+  }
+  if (connectionError) {
+    return `Disconnected. Last error: ${connectionError}`;
+  }
+  return "Not connected. Try calling a tool to connect.";
 }
 
 const server = new Server(
@@ -129,6 +146,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["player"],
         },
       },
+      {
+        name: "mc_check_connection",
+        description: "Check RCON connection status",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
     ],
   };
 });
@@ -143,19 +168,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case "mc_check_connection":
+        return {
+          content: [{ type: "text" as const, text: await checkConnection() }],
+        };
       case "mc_execute_command":
+        await ensureConnected();
         return tools.executeCommand(ctx, String(args.command));
       case "mc_list_players":
+        await ensureConnected();
         return tools.listPlayers(ctx);
       case "mc_get_server_info":
+        await ensureConnected();
         return tools.getServerInfo(ctx);
       case "mc_whitelist_add":
+        await ensureConnected();
         return tools.whitelistAdd(ctx, String(args.player));
       case "mc_whitelist_remove":
+        await ensureConnected();
         return tools.whitelistRemove(ctx, String(args.player));
       case "mc_op":
+        await ensureConnected();
         return tools.opPlayer(ctx, String(args.player));
       case "mc_deop":
+        await ensureConnected();
         return tools.deopPlayer(ctx, String(args.player));
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -174,8 +210,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-  await connectRcon();
-
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
