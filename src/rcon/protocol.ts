@@ -34,7 +34,7 @@ export function decodePacket(buffer: Buffer): Packet | null {
   const id = buffer.readInt32LE(4);
   const type = buffer.readInt32LE(8);
   const payloadEnd = 12 + packetLength - 2;
-  const payload = buffer.toString("utf8", 12, payloadEnd);
+  const payload = buffer.toString("utf8", 12, payloadEnd).replace(/\0+$/, "");
 
   return { id, type, payload };
 }

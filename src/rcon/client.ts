@@ -83,11 +83,7 @@ export class RconClient {
       this.responseCallbacks.set(id, {
         resolve: (response: string) => {
           clearTimeout(timeout);
-          if (response && response.trim()) {
-            reject(new Error(`Authentication failed: ${response}`));
-          } else {
-            resolve();
-          }
+          resolve();
         },
         reject,
       });
@@ -100,12 +96,17 @@ export class RconClient {
     this.responseBuffer = Buffer.concat([this.responseBuffer, data]);
 
     while (true) {
+      if (this.responseBuffer.length < 4) break;
+      
+      const packetLength = this.responseBuffer.readInt32LE(0);
+      const totalLength = 4 + packetLength;
+      
+      if (this.responseBuffer.length < totalLength) break;
+
       const packet = decodePacket(this.responseBuffer);
       if (!packet) break;
 
-      this.responseBuffer = this.responseBuffer.slice(
-        4 + 8 + Buffer.byteLength(packet.payload) + 2 + 4
-      );
+      this.responseBuffer = this.responseBuffer.slice(totalLength);
 
       const callback = this.responseCallbacks.get(packet.id);
       if (callback) {
