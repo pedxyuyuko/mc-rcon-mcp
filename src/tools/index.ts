@@ -89,3 +89,72 @@ export async function deopPlayer(ctx: ToolContext, player: string) {
     content: [{ type: "text" as const, text: result || "Done" }],
   };
 }
+
+export async function getOnlineOps(ctx: ToolContext): Promise<string[]> {
+  const listResult = await ctx.rcon.send("list");
+  const match = listResult.match(/There are \d+ of a max of \d+ players online:(.*)/);
+  if (!match || !match[1].trim()) {
+    return [];
+  }
+
+  const players = match[1].trim().split(", ").filter(Boolean);
+  const ops: string[] = [];
+
+  for (const player of players) {
+    const checkResult = await ctx.rcon.send(
+      `execute if entity @a[name=${player},operator=true]`
+    );
+    if (checkResult.includes("Successfully") || !checkResult.includes("no entities")) {
+      ops.push(player);
+    }
+  }
+
+  return ops;
+}
+
+export interface ExecuteAsOpOptions {
+  command: string;
+  op?: string;
+  defaultOp?: string;
+}
+
+export async function executeAsOp(ctx: ToolContext, options: ExecuteAsOpOptions) {
+  const { command, op, defaultOp } = options;
+
+  let selectedOp = op || defaultOp;
+
+  if (!selectedOp) {
+    const onlineOps = await getOnlineOps(ctx);
+
+    if (onlineOps.length === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "Error: No online operators found. Please wait for an operator to come online.",
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (onlineOps.length === 1) {
+      selectedOp = onlineOps[0];
+    } else {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: Multiple online operators found: ${onlineOps.join(", ")}. Please specify which operator to use with the 'op' parameter or set MC_DEFAULT_OP environment variable.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  const result = await ctx.rcon.send(`execute as ${selectedOp} run ${command}`);
+  return {
+    content: [{ type: "text" as const, text: result || "(empty response)" }],
+  };
+}

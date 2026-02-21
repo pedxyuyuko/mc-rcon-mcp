@@ -10,6 +10,7 @@ import * as tools from "./tools/index.js";
 const MC_RCON_HOST = process.env.MC_RCON_HOST || "127.0.0.1";
 const MC_RCON_PORT = parseInt(process.env.MC_RCON_PORT || "25575", 10);
 const MC_RCON_PASSWORD = process.env.MC_RCON_PASSWORD || "";
+const MC_DEFAULT_OP = process.env.MC_DEFAULT_OP || "";
 
 if (!MC_RCON_PASSWORD) {
   console.error("Error: MC_RCON_PASSWORD environment variable is required");
@@ -154,6 +155,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: "mc_execute_as_op",
+        description: "Execute a command as an online operator. Automatically selects an online op if only one exists, otherwise requires specifying which op to use.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The command to execute (without leading slash)",
+            },
+            op: {
+              type: "string",
+              description: "Optional: specific operator name to execute as. If not provided, uses MC_DEFAULT_OP env var or auto-selects if only one op online.",
+            },
+          },
+          required: ["command"],
+        },
+      },
     ],
   };
 });
@@ -172,6 +191,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [{ type: "text" as const, text: await checkConnection() }],
         };
+      case "mc_execute_as_op":
+        await ensureConnected();
+        return tools.executeAsOp(ctx, {
+          command: String(args.command),
+          op: args.op ? String(args.op) : undefined,
+          defaultOp: MC_DEFAULT_OP || undefined,
+        });
       case "mc_execute_command":
         await ensureConnected();
         return tools.executeCommand(ctx, String(args.command));
